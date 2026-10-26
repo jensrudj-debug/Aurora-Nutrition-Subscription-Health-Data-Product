@@ -2,8 +2,8 @@
 
 Checks the published outputs in products/ against four governance rules.
 It reads only products/, raw/consent.csv, contracts/ and config.py, and it
-never imports pipeline.py: a validator that reuses the pipeline's code
-would inherit the pipeline's bugs and approve them.
+never imports pipeline.py or governance.py: a validator that reuses the
+pipeline's code would inherit the pipeline's bugs and approve them.
 
 Every rule returns a list of violation strings. Empty list = PASS.
 Any FAIL makes the script exit with code 1, which is what blocks the
@@ -14,12 +14,15 @@ Usage:
 """
 
 import csv
+import hashlib
 import json
 import re
 import sys
 from datetime import datetime, timedelta
 
-from config import AS_OF_DATE, CONTRACTS_DIR, PRODUCTS_DIR, RAW_DIR, RETENTION_DAYS, pseudonymize
+from config import (
+    AS_OF_DATE, CONTRACTS_DIR, PRODUCTS_DIR, PSEUDONYM_SALT, RAW_DIR, RETENTION_DAYS,
+)
 
 MAX_EXAMPLES_PRINTED = 5
 MAX_VIOLATIONS_IN_REPORT = 100
@@ -76,6 +79,18 @@ def latest_consent(consent_rows, purpose):
     return status
 
 
+def expected_customer_key(customer_id):
+    """The customer_key the published key spec says this customer must have.
+
+    Recomputed here from the shared salt instead of importing
+    governance.pseudonymize: if the pipeline's hashing ever changed,
+    its keys would stop matching these and POL-002 would fail loudly
+    rather than quietly agree with the bug.
+    """
+    digest = hashlib.sha256((PSEUDONYM_SALT + customer_id).encode("utf-8")).hexdigest()
+    return digest[:20]
+
+
 def pol_002_consent_respected_in_features(features, consent, **_):
     """Every customer_key in churn_features must have granted analytics_profiling.
 
@@ -83,7 +98,7 @@ def pol_002_consent_respected_in_features(features, consent, **_):
     pipeline, so the check works even if the pipeline's filter is wrong.
     A key with no consent record at all also fails: consent is opt-in.
     """
-    status_by_key = {pseudonymize(cid): s
+    status_by_key = {expected_customer_key(cid): s
                      for cid, s in latest_consent(consent, "analytics_profiling").items()}
     violations = []
     for row in features:

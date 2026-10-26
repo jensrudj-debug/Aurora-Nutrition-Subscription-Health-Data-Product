@@ -15,24 +15,19 @@ import argparse
 import csv
 import hashlib
 import json
-import re
 from datetime import datetime, timedelta, timezone
 
 from config import (
     AS_OF_DATE, CONTRACTS_DIR, LABEL_WINDOW_DAYS, OBSERVATION_DATE,
-    PRODUCTS_DIR, RAW_DIR, RETENTION_DAYS, pseudonymize,
+    PRODUCTS_DIR, RAW_DIR, RETENTION_DAYS,
 )
+# Consent, redaction and pseudonymization live in governance.py so the
+# privacy-critical code is one reviewable, separately owned module.
+from governance import REDACTION_VERSION, consent_lookup, has_consent, pseudonymize, redact
 
 PIPELINE_VERSION = "1.0.0"
-REDACTION_VERSION = "regex-v1"
 CHUNK_WORDS = 60
 CHUNK_OVERLAP = 15
-
-# Catch-all patterns, applied after the customer's own known values, so PII
-# the customer didn't give at signup (a second email, a spouse's phone)
-# is still removed.
-EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
-PHONE_RE = re.compile(r"\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b")
 
 
 # --------------------------------------------------------------------------
@@ -57,23 +52,6 @@ def parse_ts(value):
 def to_midnight(d):
     """A date as a UTC datetime at 00:00, for comparing with timestamps."""
     return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-
-
-def consent_lookup(consent_rows):
-    """Current consent status per (customer_id, purpose).
-
-    The ledger is append-only, so the latest row per purpose wins: a
-    customer who granted and later withdrew counts as withdrawn.
-    """
-    latest = {}
-    for row in sorted(consent_rows, key=lambda r: r["updated_ts"]):
-        latest[(row["customer_id"], row["purpose"])] = row["status"]
-    return latest
-
-
-def has_consent(consent, customer_id, purpose):
-    """Missing consent is treated as no consent: opt-in, never assumed."""
-    return consent.get((customer_id, purpose)) == "granted"
 
 
 # --------------------------------------------------------------------------
@@ -150,22 +128,6 @@ def group_by(rows, key):
 # --------------------------------------------------------------------------
 # 2. rag_chunks
 # --------------------------------------------------------------------------
-
-def redact(text, sub):
-    """Replace a transcript's PII with [EMAIL], [PHONE] and [NAME].
-
-    Emails go first because they contain the customer's name
-    (dana.reyes.0042@...); redacting the name first would leave a
-    half-masked address behind.
-    """
-    text = text.replace(sub["email"], "[EMAIL]")
-    text = EMAIL_RE.sub("[EMAIL]", text)
-    text = text.replace(sub["phone"], "[PHONE]")
-    text = PHONE_RE.sub("[PHONE]", text)
-    for name in (sub["first_name"], sub["last_name"]):
-        text = re.sub(rf"\b{re.escape(name)}\b", "[NAME]", text)
-    return text
-
 
 def chunk_words(text, size=CHUNK_WORDS, overlap=CHUNK_OVERLAP):
     """Split text into overlapping word windows.

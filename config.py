@@ -1,12 +1,12 @@
 """Shared settings for the pipeline and the policy validator.
 
 Both pipeline.py and policies.py import from here, so the rules the
-validator enforces (retention window, label window, pseudonym key) are the
-same numbers the pipeline was built with. policies.py must never import
-pipeline.py itself; this file is the only code they share.
+validator enforces (retention window, label window, pseudonym salt) are the
+same values the pipeline was built with. policies.py must never import
+pipeline.py or governance.py; this file holds settings only, no logic,
+so it is the one thing they safely share.
 """
 
-import hashlib
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -31,13 +31,3 @@ OBSERVATION_DATE = AS_OF_DATE - timedelta(days=LABEL_WINDOW_DAYS)
 # (e.g. AWS Secrets Manager) and is injected at runtime: anyone holding the
 # salt can re-link a customer_key back to a customer_id.
 PSEUDONYM_SALT = "aurora-demo-salt-not-for-production"
-
-
-def pseudonymize(customer_id):
-    """Turn a customer_id into a stable, non-reversible customer_key.
-
-    Same input always gives the same key, so tables can still be joined
-    downstream without exposing the real ID.
-    """
-    digest = hashlib.sha256((PSEUDONYM_SALT + customer_id).encode("utf-8")).hexdigest()
-    return digest[:20]
