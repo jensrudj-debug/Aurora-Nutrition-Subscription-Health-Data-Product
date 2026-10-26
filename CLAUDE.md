@@ -23,7 +23,7 @@ The artifact proves one claim: **governance rules are executable, run on every c
 - `contracts/` — interface contracts.
 - `raw/` — generated source data.
 - `products/` — pipeline outputs.
-- `tests/` — test fixtures.
+- `tests/` — test fixtures and standard-library `unittest` tests.
 
 ### Validator
 - `policies.py` must never import from `pipeline.py`. It checks outputs independently.

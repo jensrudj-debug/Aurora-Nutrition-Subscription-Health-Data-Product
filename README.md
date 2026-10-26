@@ -36,6 +36,12 @@ python pipeline.py
 
 `--seed-violation` with no value plants all four violations. Give it a rule to plant only that one, e.g. `python pipeline.py --seed-violation POL-002`.
 
+## Tests
+
+```bash
+python -m unittest discover -s tests -v      # Windows; use python3 on macOS / Linux
+```
+
 ## Video demo
 
 ```bash
@@ -57,6 +63,7 @@ Options: `--no-clear` keeps earlier stages on screen, `--no-pause` runs straight
 | `policies.py` | The policy-as-code validator: POL-001 to POL-004 on the data, POL-005 on a pull request. Never imports `pipeline.py` or `governance.py`. Writes `products/policy_report.json`. |
 | `config.py` | Shared settings: as-of date, 730-day retention window, 90-day label window, pseudonymization salt. |
 | `contracts/churn_features.json` | Interface contract v1.0.0 for the ML team's feature table: 11 columns, types, primary key, freshness and breaking-change policy. |
+| `tests/test_policies.py` | Regression tests (standard-library `unittest`): each one breaks exactly one thing in a tiny in-memory dataset or PR and checks that exactly the right rule fails. They don't need `raw/` or `products/`. |
 | `tests/fixtures/pr_agent_*.json` | Sample agent pull requests for POL-005: green, red, yellow (1 approval) and yellow_approved (2 approvals). |
 | `LINEAGE.md` | Data-flow diagram, provenance and known limitations. |
 | `CLAUDE.md` | Build rules followed by the AI coding assistant. |
@@ -85,7 +92,7 @@ python3 policies.py --pr tests/fixtures/pr_agent_yellow_approved.json   # 2 appr
 ```
 (On Windows use `python` instead of `python3`.)
 
-Red zone: `governance.py`, `policies.py`, `config.py`, `contracts/`, `.github/`. A PR that changes `pipeline.py`, or is labeled `yellow`, needs at least 2 distinct human approvals. Approvals from bot-like names, the PR's author or the person who prompted the agent don't count. Only a PR whose `author_type` is exactly `human` is exempt. Without `--pr`, POL-005 is skipped.
+Red zone: `governance.py`, `policies.py`, `config.py`, `contracts/`, `.github/`, plus the files that prove the checks work: `CLAUDE.md`, `tests/fixtures/`, `tests/test_policies.py`, `demo.py` and `.gitignore`. Agents may still add new test files, which ADR-004 treats as Green-zone test scaffolding. A PR file with a missing or malformed `changed_files` list fails. A PR that changes `pipeline.py`, or is labeled `yellow`, needs at least 2 distinct human approvals. Approvals from bot-like names, the PR's author or the person who prompted the agent don't count. Only a PR whose `author_type` is exactly `human` is exempt. Without `--pr`, POL-005 is skipped.
 
 ## Results
 
@@ -139,6 +146,8 @@ Exit code **1**. **4 of 4** seeded violations were caught. POL-004 reports two f
 | pr_agent_red.json | FAIL: `governance.py`, `policies.py` | FAIL (4/5) | 1 |
 | pr_agent_yellow.json | FAIL: 1 human approval, needs 2 | FAIL (4/5) | 1 |
 | pr_agent_yellow_approved.json | PASS | PASS (5/5) | 0 |
+
+**`python -m unittest discover -s tests`:** `Ran 48 tests ... OK`.
 
 **`demo.py --no-pause`:** all 13 outcomes were as expected. The summary reads `6 of 6 seeded violations blocked; every one passed again once removed.` (4 data rules plus 2 POL-005 PRs), with exit code 0.
 

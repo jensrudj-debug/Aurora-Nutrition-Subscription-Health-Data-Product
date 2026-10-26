@@ -300,11 +300,19 @@ def pol_004_feature_contract(features, header, contract, **_):
 # POL-005: agent PRs cannot touch Red-zone paths (ADR-004)
 # --------------------------------------------------------------------------
 
-# The code that enforces privacy and governance. An agent may propose
-# changes anywhere else, but never here: a plausible-looking edit to the
-# redactor, the validator or the contract could switch off the very checks
-# that would catch it. Entries ending in "/" cover a whole folder.
-RED_ZONE = ("governance.py", "policies.py", "config.py", "contracts/", ".github/")
+# The code that enforces privacy and governance, and the files that prove
+# it works. An agent may propose changes anywhere else, but never here: a
+# plausible-looking edit to the redactor, the validator or the contract
+# could switch off the very checks that would catch it. The same goes for
+# the agent's own build rules (CLAUDE.md), the existing tests and fixtures
+# that prove the checks fail, the demo that shows them, and .gitignore,
+# which keeps PII-bearing raw/ out of git. New test files elsewhere in
+# tests/ stay Green: ADR-004 lets an agent add test scaffolding, just not
+# rewrite the proofs that already exist. Entries ending in "/" cover a folder.
+RED_ZONE = (
+    "governance.py", "policies.py", "config.py", "contracts/", ".github/",
+    "CLAUDE.md", "tests/fixtures/", "tests/test_policies.py", "demo.py", ".gitignore",
+)
 # Feature logic and chunking parameters (ADR-004 Yellow zone). The zone is
 # decided by which files change, not by a label the PR's author chooses.
 YELLOW_ZONE = ("pipeline.py",)
@@ -352,13 +360,37 @@ def counted_approvers(pr):
     return counted, rejected
 
 
+def pr_shape_violations(pr):
+    """Problems with the PR file itself, before any zone can be judged.
+
+    Fail closed: a missing or malformed file list means we can't tell what
+    changed, so the PR can't be approved. (Looping over a string by mistake
+    would check one letter at a time and match nothing.)
+    """
+    if not isinstance(pr, dict):
+        return ["PR file is not a JSON object"]
+    out = []
+    files = pr.get("changed_files")
+    if not isinstance(files, list) or not files:
+        out.append("PR file: 'changed_files' must be a non-empty list of paths")
+    elif not all(isinstance(f, str) and f.strip() for f in files):
+        out.append("PR file: every entry in 'changed_files' must be a path string")
+    for field in ("labels", "human_approvals"):
+        if field in pr and not isinstance(pr[field], list):
+            out.append(f"PR file: '{field}' must be a list")
+    return out
+
+
 def pol_005_agent_zones(pr, **_):
     """Agent-authored PRs: never touch Red zone; Yellow needs 2 human approvals.
 
     Human PRs are not restricted here; they go through normal code review.
     A PR is Yellow if it changes a Yellow-zone file or carries the yellow
-    label.
+    label. A malformed PR file fails for everyone, human or agent.
     """
+    shape = pr_shape_violations(pr)
+    if shape:
+        return shape
     if not is_agent_pr(pr):
         return []
     violations = []
