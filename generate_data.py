@@ -16,12 +16,14 @@ import argparse
 import csv
 import json
 import random
-from datetime import date, datetime, time, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, time, timedelta, timezone
+
+from config import AS_OF_DATE, RAW_DIR
 
 GENERATOR_VERSION = "1.0.0"
-AS_OF = datetime.combine(date(2026, 10, 1), time(0, 0), tzinfo=timezone.utc)
-RAW_DIR = Path(__file__).parent / "raw"
+# The as-of date comes from config.py so the generator, pipeline and
+# validator can never disagree about what "today" is.
+AS_OF = datetime.combine(AS_OF_DATE, time(0, 0), tzinfo=timezone.utc)
 CYCLE_DAYS = 30
 
 PLANS = {

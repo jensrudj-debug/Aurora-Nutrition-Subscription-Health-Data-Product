@@ -11,3 +11,6 @@ Thumbs.db
 
 # Generated data: regenerate with `python generate_data.py` (seed 42)
 raw/
+
+# Pipeline outputs: regenerate with `python pipeline.py`
+products/
