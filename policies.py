@@ -151,8 +151,15 @@ def pol_004_feature_contract(features, header, contract, **_):
     violations = []
     expected = [c["name"] for c in contract["columns"]]
 
-    if header != expected:
-        violations.append(f"columns {header} do not match contract {expected}")
+    # Name only the difference, so a reviewer sees what changed at a glance.
+    unexpected = [c for c in header if c not in expected]
+    missing = [c for c in expected if c not in header]
+    if unexpected:
+        violations.append(f"unexpected column(s) {unexpected} not in contract")
+    if missing:
+        violations.append(f"missing column(s) {missing} required by contract")
+    if not unexpected and not missing and header != expected:
+        violations.append("column order differs from contract")
     for col in sorted(FORBIDDEN_COLUMNS & set(header)):
         violations.append(f"forbidden identifier column '{col}' present")
 
