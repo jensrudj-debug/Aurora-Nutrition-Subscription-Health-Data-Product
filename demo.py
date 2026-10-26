@@ -24,7 +24,7 @@ REPORT = ROOT / "products" / "policy_report.json"
 DATA_STAGES = [
     ("POL-001", "No raw PII in vector-layer chunks",
      "an email address left in a transcript chunk", "a redaction regression"),
-    ("POL-002", "Withdrawn consent excluded from features",
+    ("POL-002", "Withdrawn consent excluded from features and chunks",
      "a feature row for a customer who opted out of profiling",
      "a join that drops the consent filter"),
     ("POL-003", "Chunks within the 730-day retention window",

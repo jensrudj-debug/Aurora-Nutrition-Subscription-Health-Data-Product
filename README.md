@@ -85,7 +85,7 @@ python3 policies.py --pr tests/fixtures/pr_agent_yellow_approved.json   # 2 appr
 ```
 (On Windows use `python` instead of `python3`.)
 
-Red zone: `governance.py`, `policies.py`, `config.py`, `contracts/`, `.github/`. A PR labeled `yellow` needs at least 2 distinct human approvals. Without `--pr`, POL-005 is skipped.
+Red zone: `governance.py`, `policies.py`, `config.py`, `contracts/`, `.github/`. A PR that changes `pipeline.py`, or is labeled `yellow`, needs at least 2 distinct human approvals. Approvals from bot-like names, the PR's author or the person who prompted the agent don't count. Only a PR whose `author_type` is exactly `human` is exempt. Without `--pr`, POL-005 is skipped.
 
 ## Results
 
@@ -118,7 +118,7 @@ Measured monthly cancel rate: **5.05%**. Active subscribers at 2026-10-01: **993
 ```
 FAIL  POL-001  No raw PII in vector-layer chunks  (1 violations)
         - chunk T0000083-00: raw email detected ('@example.com')
-FAIL  POL-002  Withdrawn analytics consent excluded from features  (1 violations)
+FAIL  POL-002  Withdrawn consent excluded from features and chunks  (1 violations)
         - customer_key e36edd34f8d052ecb587: analytics_profiling is 'withdrawn' but row present
 FAIL  POL-003  Transcript chunks within 730-day retention window  (1 violations)
         - chunk BACKFILL-00: 2024-04-14 older than 2024-10-01
