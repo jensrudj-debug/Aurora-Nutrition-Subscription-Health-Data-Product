@@ -1,0 +1,27 @@
+{
+  "data_product": "subscription_health",
+  "output_port": "churn_features",
+  "version": "1.0.0",
+  "owner": "Analytics Engineering",
+  "consumers": [
+    "ML Platform - churn-risk model",
+    "Retention analytics"
+  ],
+  "grain": "one row per scoreable customer per as_of_date",
+  "primary_key": "customer_key",
+  "freshness_sla": "as_of_date no older than 24 hours at 07:00 America/Chicago",
+  "breaking_change_policy": "column removal, rename or type change = major version bump + 30-day dual publish",
+  "columns": [
+    {"name": "customer_key",           "type": "string",  "nullable": false, "pii": "pseudonymous"},
+    {"name": "as_of_date",             "type": "date",    "nullable": false, "pii": "none"},
+    {"name": "plan_id",                "type": "string",  "nullable": false, "pii": "none"},
+    {"name": "monthly_price_usd",      "type": "decimal", "nullable": false, "pii": "none"},
+    {"name": "acquisition_channel",    "type": "string",  "nullable": false, "pii": "none"},
+    {"name": "tenure_days",            "type": "int",     "nullable": false, "pii": "none"},
+    {"name": "skips_total",            "type": "int",     "nullable": false, "pii": "none"},
+    {"name": "pauses_total",           "type": "int",     "nullable": false, "pii": "none"},
+    {"name": "failed_payments_90d",    "type": "int",     "nullable": false, "pii": "none"},
+    {"name": "support_contacts_total", "type": "int",     "nullable": false, "pii": "none"},
+    {"name": "label_churned_next_90d", "type": "int",     "nullable": false, "pii": "none"}
+  ]
+}
