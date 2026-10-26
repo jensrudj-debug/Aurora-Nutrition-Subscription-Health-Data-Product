@@ -8,7 +8,8 @@ Outputs:
 Usage:
     python generate_data.py   # first, if raw/ is empty
     python pipeline.py
-    python pipeline.py --seed-violation   # demo: plant one violation per policy
+    python pipeline.py --seed-violation           # demo: plant one violation per policy
+    python pipeline.py --seed-violation POL-002   # demo: plant only POL-002's violation
 """
 
 import argparse
@@ -179,53 +180,61 @@ def build_rag_chunks(subscribers, transcripts, consent):
 # Demo only: seeded violations
 # --------------------------------------------------------------------------
 
-def seed_violations(features, chunks, columns, subscribers, consent):
-    """Plant exactly one known violation per policy into the built outputs.
+SEEDABLE_RULES = ("POL-001", "POL-002", "POL-003", "POL-004")
+
+
+def seed_violations(features, chunks, columns, subscribers, consent, rules=SEEDABLE_RULES):
+    """Plant one known violation for each rule in `rules` into the built outputs.
 
     Each one imitates a mistake that really happens in data teams. The
-    point of the demo is that policies.py catches all four without being
+    point of the demo is that policies.py catches them without being
     told they are there, the same way it would catch them from a person
-    or an AI agent.
+    or an AI agent. Seeding one rule at a time lets the demo show each
+    check failing on its own.
     """
     seeded = []
 
     # 1. POL-001 — a redaction regression: someone "simplifies" the redactor
     # and an email address slips through into text that will be embedded.
-    chunks[0]["text"] += " You can also reach me at jordan.olson.9999@example.com."
-    seeded.append({"rule": "POL-001", "target": f"chunk {chunks[0]['chunk_id']}",
-                   "injection": "fake example.com email appended to chunk text",
-                   "imitates": "a redaction regression"})
+    if "POL-001" in rules:
+        chunks[0]["text"] += " You can also reach me at jordan.olson.9999@example.com."
+        seeded.append({"rule": "POL-001", "target": f"chunk {chunks[0]['chunk_id']}",
+                       "injection": "fake example.com email appended to chunk text",
+                       "imitates": "a redaction regression"})
 
     # 2. POL-002 — a join that drops the consent filter: a refactor rebuilds
     # the feature table from the full customer list and a profiling
     # opt-out gets back in.
-    withdrawn_id = sorted(cid for (cid, purpose), status in consent.items()
-                          if purpose == "analytics_profiling" and status != "granted")[0]
-    features.append({**features[0], "customer_key": pseudonymize(withdrawn_id)})
-    seeded.append({"rule": "POL-002", "target": f"customer_key {pseudonymize(withdrawn_id)}",
-                   "injection": "feature row added for a customer who withdrew analytics_profiling",
-                   "imitates": "a join that drops the consent filter"})
+    if "POL-002" in rules:
+        withdrawn_id = sorted(cid for (cid, purpose), status in consent.items()
+                              if purpose == "analytics_profiling" and status != "granted")[0]
+        features.append({**features[0], "customer_key": pseudonymize(withdrawn_id)})
+        seeded.append({"rule": "POL-002", "target": f"customer_key {pseudonymize(withdrawn_id)}",
+                       "injection": "feature row added for a customer who withdrew analytics_profiling",
+                       "imitates": "a join that drops the consent filter"})
 
     # 3. POL-003 — a backfill that ignores retention: an old export is
     # re-loaded "to improve coverage" without re-applying the 730-day window.
     # Copies a clean chunk's text so this injection trips only POL-003.
-    old_date = (AS_OF_DATE - timedelta(days=900)).isoformat()
-    backfill = {**chunks[1], "chunk_id": "BACKFILL-00", "created_date": old_date}
-    chunks.append(backfill)
-    seeded.append({"rule": "POL-003", "target": "chunk BACKFILL-00",
-                   "injection": f"chunk dated {old_date} (900 days before as-of) added",
-                   "imitates": "a backfill that ignores retention"})
+    if "POL-003" in rules:
+        old_date = (AS_OF_DATE - timedelta(days=900)).isoformat()
+        backfill = {**chunks[1], "chunk_id": "BACKFILL-00", "created_date": old_date}
+        chunks.append(backfill)
+        seeded.append({"rule": "POL-003", "target": "chunk BACKFILL-00",
+                       "injection": f"chunk dated {old_date} (900 days before as-of) added",
+                       "imitates": "a backfill that ignores retention"})
 
     # 4. POL-004 — a schema change nobody announced: someone joins
     # subscribers in "for convenience" and the feature table gains an
     # email column the contract never allowed.
-    email_by_key = {pseudonymize(s["customer_id"]): s["email"] for s in subscribers}
-    for row in features:
-        row["email"] = email_by_key.get(row["customer_key"], "unknown@example.com")
-    columns = columns + ["email"]
-    seeded.append({"rule": "POL-004", "target": "churn_features.csv header",
-                   "injection": "extra 'email' column added to churn_features",
-                   "imitates": "a schema change nobody announced"})
+    if "POL-004" in rules:
+        email_by_key = {pseudonymize(s["customer_id"]): s["email"] for s in subscribers}
+        for row in features:
+            row["email"] = email_by_key.get(row["customer_key"], "unknown@example.com")
+        columns = columns + ["email"]
+        seeded.append({"rule": "POL-004", "target": "churn_features.csv header",
+                       "injection": "extra 'email' column added to churn_features",
+                       "imitates": "a schema change nobody announced"})
 
     return features, chunks, columns, seeded
 
@@ -308,8 +317,10 @@ def build_lineage(inputs, features_path, n_features, feature_excl,
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--seed-violation", action="store_true",
-                        help="after the normal build, plant one known violation per policy "
+    parser.add_argument("--seed-violation", nargs="?", const="all", metavar="RULE",
+                        choices=("all",) + SEEDABLE_RULES,
+                        help="after the normal build, plant a known violation: one per "
+                             "policy (no value or 'all'), or only one, e.g. POL-002 "
                              "(demo only; policies.py should then fail)")
     return parser.parse_args()
 
@@ -332,8 +343,9 @@ def main():
 
     seeded = []
     if args.seed_violation:
+        rules = SEEDABLE_RULES if args.seed_violation == "all" else (args.seed_violation,)
         features, chunks, columns, seeded = seed_violations(
-            features, chunks, columns, subscribers, consent)
+            features, chunks, columns, subscribers, consent, rules)
 
     PRODUCTS_DIR.mkdir(exist_ok=True)
     features_path = PRODUCTS_DIR / "churn_features.csv"
@@ -372,7 +384,7 @@ def main():
     print("  lineage.json        written")
     if seeded:
         print()
-        print(f"  SEEDED RUN: {len(seeded)} known violations planted (see lineage.json):")
+        print(f"  SEEDED RUN: {len(seeded)} known violation(s) planted (see lineage.json):")
         for s in seeded:
             print(f"    {s['rule']}  {s['injection']}  <- imitates {s['imitates']}")
 

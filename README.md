@@ -36,17 +36,30 @@ python pipeline.py
 
 `generate_data.py` takes `--customers` (default 2000) and `--seed` (default 42). The results below use the defaults.
 
+`--seed-violation` with no value plants all four violations. Give it a rule to plant only that one, e.g. `python pipeline.py --seed-violation POL-002`.
+
+## Video demo
+
+```bash
+python demo.py          # Windows; use python3 on macOS / Linux
+```
+
+An interactive walkthrough in 14 stages. Press Enter to go to each one. It builds clean data, then for each of POL-001 to POL-004 it plants that rule's violation (only that rule fails) and rebuilds clean (the rule passes again). After that it runs POL-005 on a blocked agent PR and on the corrected PR, for both the Red and the Yellow zone, and ends with a summary read from the real exit codes. It leaves `products/` in a clean, passing state.
+
+Options: `--no-clear` keeps earlier stages on screen, `--no-pause` runs straight through for rehearsal, and `--no-color` gives plain text.
+
 ## File guide
 
 | Path | What it is |
 |---|---|
 | `generate_data.py` | Creates five synthetic source files in `raw/` (subscribers, subscription events, billing, consent, transcripts) plus `raw/_manifest.json`. |
-| `pipeline.py` | Builds `products/churn_features.csv`, `products/rag_chunks.jsonl` and `products/lineage.json`. `--seed-violation` plants the four demo violations. |
+| `pipeline.py` | Builds `products/churn_features.csv`, `products/rag_chunks.jsonl` and `products/lineage.json`. `--seed-violation [RULE]` plants all four demo violations, or just one. |
+| `demo.py` | Interactive, press-Enter walkthrough for the video: each policy fails on its seeded violation, then passes once it is removed. |
 | `governance.py` | Consent lookup, redaction and pseudonymization: the privacy-critical code the pipeline imports (ADR-004 Red zone). |
 | `policies.py` | The policy-as-code validator: POL-001 to POL-004 on the data, POL-005 on a pull request. Never imports `pipeline.py` or `governance.py`. Writes `products/policy_report.json`. |
 | `config.py` | Shared settings: as-of date, 730-day retention window, 90-day label window, pseudonymization salt. |
 | `contracts/churn_features.json` | Interface contract v1.0.0 for the ML team's feature table: 11 columns, types, primary key, freshness and breaking-change policy. |
-| `tests/fixtures/pr_agent_*.json` | Three sample agent pull requests (green, red, yellow) for POL-005. |
+| `tests/fixtures/pr_agent_*.json` | Sample agent pull requests for POL-005: green, red, yellow (1 approval) and yellow_approved (2 approvals). |
 | `LINEAGE.md` | Data-flow diagram, provenance and known limitations. |
 | `CLAUDE.md` | Build rules followed by the AI coding assistant. |
 | `raw/`, `products/` | Generated output, git-ignored. Rebuild with the commands above. |
@@ -70,6 +83,7 @@ The run is recorded in `products/lineage.json` as `"run_mode": "seeded_violation
 python3 policies.py --pr tests/fixtures/pr_agent_green.json    # docs only       -> PASS, exit 0
 python3 policies.py --pr tests/fixtures/pr_agent_red.json      # Red-zone files  -> FAIL, exit 1
 python3 policies.py --pr tests/fixtures/pr_agent_yellow.json   # 1 of 2 approvals -> FAIL, exit 1
+python3 policies.py --pr tests/fixtures/pr_agent_yellow_approved.json   # 2 approvals -> PASS, exit 0
 ```
 (On Windows use `python` instead of `python3`.)
 
@@ -126,6 +140,9 @@ Exit code **1**. **4 of 4** seeded violations were caught. POL-004 reports two f
 | pr_agent_green.json | PASS | PASS (5/5) | 0 |
 | pr_agent_red.json | FAIL: `governance.py`, `policies.py` | FAIL (4/5) | 1 |
 | pr_agent_yellow.json | FAIL: 1 human approval, needs 2 | FAIL (4/5) | 1 |
+| pr_agent_yellow_approved.json | PASS | PASS (5/5) | 0 |
+
+**`demo.py --no-pause`:** all 13 outcomes were as expected. The summary reads `6 of 6 seeded violations blocked; every one passed again once removed.` (4 data rules plus 2 POL-005 PRs), with exit code 0.
 
 ## AI-assisted build disclosure
 

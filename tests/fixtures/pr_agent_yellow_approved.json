@@ -1,0 +1,9 @@
+{
+  "title": "feat: add days_since_last_skip feature",
+  "author_type": "agent",
+  "labels": ["yellow"],
+  "human_approvals": ["retention.lead", "analytics.engineer"],
+  "changed_files": [
+    "pipeline.py"
+  ]
+}
