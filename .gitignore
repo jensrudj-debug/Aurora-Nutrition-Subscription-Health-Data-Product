@@ -8,3 +8,6 @@ venv/
 Thumbs.db
 *.mp4
 *.mov
+
+# Generated data: regenerate with `python generate_data.py` (seed 42)
+raw/
