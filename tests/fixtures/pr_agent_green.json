@@ -1,0 +1,10 @@
+{
+  "title": "docs: add column descriptions for churn_features",
+  "author_type": "agent",
+  "labels": [],
+  "human_approvals": [],
+  "changed_files": [
+    "README.md",
+    "docs/feature_dictionary.md"
+  ]
+}

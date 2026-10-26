@@ -1,6 +1,7 @@
 """Policy-as-code validator for the Subscription Health data product.
 
-Checks the published outputs in products/ against four governance rules.
+Checks the published outputs in products/ against four governance rules
+(POL-001..004) and, given a pull-request file, who may change what (POL-005).
 It reads only products/, raw/consent.csv, contracts/ and config.py, and it
 never imports pipeline.py or governance.py: a validator that reuses the
 pipeline's code would inherit the pipeline's bugs and approve them.
@@ -10,15 +11,18 @@ Any FAIL makes the script exit with code 1, which is what blocks the
 change in CI or a Dagster asset check, whoever (or whatever) wrote it.
 
 Usage:
-    python policies.py
+    python policies.py                                         # POL-001..004
+    python policies.py --pr tests/fixtures/pr_agent_red.json   # + POL-005
 """
 
+import argparse
 import csv
 import hashlib
 import json
 import re
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from config import (
     AS_OF_DATE, CONTRACTS_DIR, PRODUCTS_DIR, PSEUDONYM_SALT, RAW_DIR, RETENTION_DAYS,
@@ -198,6 +202,48 @@ def pol_004_feature_contract(features, header, contract, **_):
 
 
 # --------------------------------------------------------------------------
+# POL-005: agent PRs cannot touch Red-zone paths (ADR-004)
+# --------------------------------------------------------------------------
+
+# The code that enforces privacy and governance. An agent may propose
+# changes anywhere else, but never here: a plausible-looking edit to the
+# redactor, the validator or the contract could switch off the very checks
+# that would catch it. Entries ending in "/" cover a whole folder.
+RED_ZONE = ("governance.py", "policies.py", "config.py", "contracts/", ".github/")
+YELLOW_LABEL = "yellow"
+YELLOW_MIN_APPROVALS = 2
+
+
+def in_red_zone(path):
+    """True if a changed file is a Red-zone file or sits inside a Red-zone folder."""
+    path = path.replace("\\", "/").removeprefix("./")
+    return any(path.startswith(entry) if entry.endswith("/") else path == entry
+               for entry in RED_ZONE)
+
+
+def pol_005_agent_zones(pr, **_):
+    """Agent-authored PRs: never touch Red zone; Yellow needs 2 human approvals.
+
+    Human PRs are not restricted here; they go through normal code review.
+    A PR that doesn't say who wrote it is treated as an agent PR, so a
+    missing field can't be used to skip the check.
+    """
+    if pr.get("author_type", "agent") != "agent":
+        return []
+    violations = []
+    for path in pr.get("changed_files", []):
+        if in_red_zone(path):
+            violations.append(f"agent PR may not modify Red-zone path {path}")
+    labels = [label.lower() for label in pr.get("labels", [])]
+    # set(): the same reviewer approving twice is still one person.
+    approvers = set(pr.get("human_approvals", []))
+    if YELLOW_LABEL in labels and len(approvers) < YELLOW_MIN_APPROVALS:
+        violations.append(f"Yellow-zone agent PR has {len(approvers)} human approval(s); "
+                          f"needs {YELLOW_MIN_APPROVALS}")
+    return violations
+
+
+# --------------------------------------------------------------------------
 # Running the rules
 # --------------------------------------------------------------------------
 
@@ -206,7 +252,10 @@ RULES = [
     ("POL-002", "Withdrawn analytics consent excluded from features", pol_002_consent_respected_in_features),
     ("POL-003", "Transcript chunks within 730-day retention window", pol_003_retention_window),
     ("POL-004", "churn_features honors its contract", pol_004_feature_contract),
+    ("POL-005", "Agent PRs cannot touch Red-zone paths", pol_005_agent_zones),
 ]
+# Rules that check a pull request rather than data; skipped when no PR is given.
+PR_RULES = {"POL-005"}
 
 
 def load_context(products_dir=PRODUCTS_DIR, raw_dir=RAW_DIR, contracts_dir=CONTRACTS_DIR):
@@ -232,6 +281,11 @@ def run_rules(context):
     """Run every rule and return one result dict per rule."""
     results = []
     for rule_id, title, rule in RULES:
+        if rule_id in PR_RULES and context.get("pr") is None:
+            results.append({"rule": rule_id, "title": title, "status": "SKIPPED",
+                            "violation_count": 0, "violations": [],
+                            "reason": "no --pr file given"})
+            continue
         violations = rule(**context)
         results.append({
             "rule": rule_id,
@@ -245,37 +299,57 @@ def run_rules(context):
 
 def print_results(results):
     for r in results:
+        if r["status"] == "SKIPPED":
+            print(f"SKIP  {r['rule']}  {r['title']}  ({r['reason']})")
+            continue
         print(f"{r['status']}  {r['rule']}  {r['title']}"
               + (f"  ({r['violation_count']} violations)" if r["violation_count"] else ""))
         for v in r["violations"][:MAX_EXAMPLES_PRINTED]:
             print(f"        - {v}")
-    failed = [r["rule"] for r in results if r["status"] == "FAIL"]
+    ran = [r for r in results if r["status"] != "SKIPPED"]
+    failed = [r["rule"] for r in ran if r["status"] == "FAIL"]
     print()
     print(f"RESULT: {'FAIL' if failed else 'PASS'}  "
-          f"({len(results) - len(failed)}/{len(results)} rules passed"
+          f"({len(ran) - len(failed)}/{len(ran)} rules passed"
           + (f"; failed: {', '.join(failed)})" if failed else ")"))
 
 
-def write_report(results, path):
+def write_report(results, path, pr_path=None):
     report = {
         "validator": "policies.py",
         "as_of_date": AS_OF_DATE.isoformat(),
+        "pr_file": pr_path,
         "overall": "FAIL" if any(r["status"] == "FAIL" for r in results) else "PASS",
         "rules": results,
     }
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run the Subscription Health policy checks.")
+    parser.add_argument("--pr", metavar="FILE",
+                        help="pull-request JSON to check with POL-005 "
+                             "(e.g. tests/fixtures/pr_agent_red.json)")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    # Missing inputs are a failure, not a pass: nothing was proven.
     try:
         context = load_context()
     except FileNotFoundError as e:
-        # Missing outputs are a failure, not a pass: nothing was proven.
         print(f"FAIL  cannot read inputs: {e}. Run generate_data.py and pipeline.py first.")
+        return 1
+    try:
+        context["pr"] = (json.loads(Path(args.pr).read_text(encoding="utf-8"))
+                         if args.pr else None)
+    except FileNotFoundError:
+        print(f"FAIL  cannot read pull-request file: {args.pr}")
         return 1
     results = run_rules(context)
     print_results(results)
-    write_report(results, PRODUCTS_DIR / "policy_report.json")
+    write_report(results, PRODUCTS_DIR / "policy_report.json", args.pr)
     return 1 if any(r["status"] == "FAIL" for r in results) else 0
 
 

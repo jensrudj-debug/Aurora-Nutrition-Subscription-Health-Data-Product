@@ -1,0 +1,10 @@
+{
+  "title": "fix: speed up redaction and relax phone check",
+  "author_type": "agent",
+  "labels": [],
+  "human_approvals": [],
+  "changed_files": [
+    "governance.py",
+    "policies.py"
+  ]
+}
