@@ -2,8 +2,6 @@
 
 **What it proves:** Aurora's governance rules are executable code that runs on every change and blocks a bad change with exit code 1, whether a person or an AI agent wrote it.
 
-This is part 3 of the Subscription Health capstone package. Part 1 is the ADR set and compliance matrix, and part 2 is the data product specification. Those two are separate documents. All data here is synthetic; see [LINEAGE.md](LINEAGE.md) for provenance, the full data flow and known limitations.
-
 ## Requirements
 
 - Python 3.10 or newer, standard library only. Nothing to install.
